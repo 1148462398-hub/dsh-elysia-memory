@@ -35,9 +35,29 @@ const PKG_DIR = path.resolve(here, '..')
 const pkg = JSON.parse(await fsp.readFile(path.join(PKG_DIR, 'package.json'), 'utf8'))
 const ENTRY_FILE = `${ME}__${pkg.name}.yml`
 const localEntry = path.join(PKG_DIR, 'market', ENTRY_FILE)
+const localEntryText = await fsp.readFile(localEntry, 'utf8')
 
-/** 分支名带版本号：同一个分支被上一次 PR 用掉之后，下次才不会撞上 */
-const BRANCH = `market-${pkg.name}-v${pkg.version}`
+/** 分支名带版本号：同一个分支被上一次 PR 用掉之后，下次才不会撞上。
+ *  想复用已有 PR 的分支（连着发两个版本、不想开第二个 PR），
+ *  用 GH_MARKET_BRANCH=market-xxx-v1.2.3 指定。*/
+const BRANCH = process.env.GH_MARKET_BRANCH || `market-${pkg.name}-v${pkg.version}`
+
+const PR_TITLE = `Update ${ME}__${pkg.name} to v${pkg.version}`
+const PR_BODY = [
+  `Bumps **${pkg.name}** to \`v${pkg.version}\`.`,
+  '',
+  '- repo: ' + (localEntryText.match(/^url:\s*(\S+)/m)?.[1] ?? ''),
+  '- tarball: ' + (localEntryText.match(/^tarball:\s*(\S+)/m)?.[1] ?? ''),
+  '',
+  'Highlights:',
+  '',
+  '- **气泡不再依赖语音引擎**：没装 TTS 的机器上也会弹气泡，只是不出声。',
+  '- **「已安装」徽章改成读磁盘**：以前它读的是「这次启动跑过安装没有」，',
+  '  换台机器就把装好的显示成未安装、删了文件又还显示已安装。',
+  '- **新增「卸载」按钮**：只删插件放进去的 9 个文件（约 200 MB），',
+  '  引擎本体（约 27 GB）一律不碰。',
+  '- 顺带把 `assets/`（气泡头像）和 `docs/` 补进了仓库。'
+].join('\n')
 
 if (!TOKEN && !DRY) {
   console.error('缺少 GITHUB_TOKEN')
@@ -166,29 +186,37 @@ async function main() {
 
   try {
     const pr = await api('POST', `/repos/${UPSTREAM_OWNER}/${UPSTREAM_REPO}/pulls`, {
-      title: `Update ${ENTRY_FILE.replace(/\.yml$/, '')} to v${pkg.version}`,
+      title: PR_TITLE,
       head: `${ME}:${branchName}`,
       base: 'main',
-      body: [
-        `Bumps **${pkg.name}** to \`v${pkg.version}\`.`,
-        '',
-        '- repo: ' + (yamlText.match(/^url:\s*(\S+)/m)?.[1] ?? ''),
-        '- tarball: ' + (yamlText.match(/^tarball:\s*(\S+)/m)?.[1] ?? ''),
-        '',
-        'This release fixes a real bug: **the speech bubble never appeared on machines',
-        'without the TTS engine**, because the bubble was gated behind the voice switch.',
-        'Bubbles are now independent of the engine (`voice.bubble`, default on).',
-        'It also stopped `assets/` (the avatar) and `docs/` from being dropped from the repo.'
-      ].join('\n')
+      body: PR_BODY
     })
     console.log('')
     console.log(`PR #${pr.number}：${pr.html_url}`)
   } catch (error) {
     if (error.status !== 422) throw error
-    // 同一分支已经开过 PR：找出来打印，不重复开
-    const open = await api('GET', `/repos/${UPSTREAM_OWNER}/${UPSTREAM_REPO}/pulls?state=open&head=${ME}:${branchName}`)
-    if (open?.length) console.log(`PR 已存在：#${open[0].number} ${open[0].html_url}`)
-    else console.log('PR 创建被拒（422），但也没找到已存在的 PR，可能是分支没有新提交。')
+    /*
+     * 同一分支已经开过 PR（复用分支连发两个版本时会这样）：
+     * 不重复开，直接把标题和正文刷新成新版本，PR #号保持不变。
+     */
+    const open = await api(
+      'GET',
+      `/repos/${UPSTREAM_OWNER}/${UPSTREAM_REPO}/pulls?state=open&head=${ME}:${branchName}`
+    )
+    if (open?.length) {
+      const pr = open[0]
+      try {
+        await api('PATCH', `/repos/${UPSTREAM_OWNER}/${UPSTREAM_REPO}/pulls/${pr.number}`, {
+          title: PR_TITLE,
+          body: PR_BODY
+        })
+        console.log(`PR 已存在，已就地更新：#${pr.number} ${pr.html_url}`)
+      } catch (e) {
+        console.log(`PR 已存在：#${pr.number} ${pr.html_url}（标题更新失败：${e.message}）`)
+      }
+    } else {
+      console.log('PR 创建被拒（422），但也没找到已存在的 PR，可能是分支没有新提交。')
+    }
   }
 }
 

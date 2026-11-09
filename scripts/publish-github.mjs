@@ -241,10 +241,18 @@ async function uploadAsset(release, filePath) {
     if (error.status !== 404) throw error
   }
   const buffer = await fsp.readFile(filePath)
-  const asset = await api('POST', `/releases/${release.id}/assets?name=${encodeURIComponent(name)}`, buffer, {
-    base: UPLOADS,
-    contentType: 'application/gzip'
-  })
+  /*
+   * 上传资产必须走 uploads.github.com/repos/<owner>/<repo>/releases/<id>/assets。
+   * 少写 /repos/<owner>/<repo> 会被 api.github.com 当成别的东西，
+   * content-type 也必须是文件本身的二进制类型（写 application/json 会得到
+   * 400 "Multipart form data required"）。
+   */
+  const asset = await api(
+    'POST',
+    `/repos/${OWNER}/${REPO}/releases/${release.id}/assets?name=${encodeURIComponent(name)}`,
+    buffer,
+    { base: UPLOADS, contentType: 'application/octet-stream' }
+  )
   console.log(`已上传资产 ${asset.name}（${(asset.size / 1024).toFixed(0)} KB）`)
   return asset
 }
@@ -316,9 +324,27 @@ async function main() {
     console.log(`${BRANCH} 还不存在，本次是第一个提交`)
   }
 
+  /*
+   * 只在「仓库里真的还存在」时才列删除项。
+   * 对已经不存在的路径再写 sha:null，GitHub 会回 422 GitRPC::BadObjectState
+   * （上一次发布已经删过的文件，不该再删一次）。
+   */
+  let pruneEntries = []
+  if (baseTree) {
+    try {
+      const full = await api('GET', `/repos/${OWNER}/${REPO}/git/trees/${baseTree}?recursive=1`)
+      const paths = new Set((full?.tree ?? []).map((n) => n.path))
+      const alive = PRUNE.filter((p) => paths.has(withPrefix(p)))
+      pruneEntries = alive.map((p) => ({ path: withPrefix(p), mode: '100644', type: 'blob', sha: null }))
+      if (alive.length) console.log(`顺手删掉仓库里已废弃的路径：${alive.join('、')}`)
+    } catch (error) {
+      console.log(`读取旧 tree 失败，跳过清理废弃路径：${error.message}`)
+    }
+  }
+
   const tree = await api('POST', `/repos/${OWNER}/${REPO}/git/trees`, {
     // sha: null = 从新 tree 里删掉这个路径
-    tree: [...blobs, ...PRUNE.map((p) => ({ path: withPrefix(p), mode: '100644', type: 'blob', sha: null }))],
+    tree: [...blobs, ...pruneEntries],
     ...(baseTree ? { base_tree: baseTree } : {})
   })
 
