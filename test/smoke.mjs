@@ -6,7 +6,7 @@ import { promises as fsp } from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 
-import { MemoryStore, parseSections, parseMeta, defaultTemplate, SECTIONS, entryLine } from '../lib/store.js'
+import { MemoryStore, parseSections, parseMeta, defaultTemplate, SECTIONS, entryLine, DEFAULT_IDENTITY, DEFAULT_PERSONA } from '../lib/store.js'
 import { entryKey } from '../lib/entryindex.js'
 import { extractKeywords } from '../lib/keywords.js'
 import { buildMemoryPrompt, buildPersonaPrompt } from '../lib/prompt.js'
@@ -15,7 +15,8 @@ import { renderPage, MEMORY_PAGE_PREFIX } from '../lib/webui.js'
 import { runInstallSelfTest } from '../lib/selftest.js'
 import { bumpStats, listSkills, matchSkills, readSkill, readStats, removeSkill, saveSkill, runSkill } from '../lib/skills.js'
 import { matchSticker, scanStickers, recordUsage, setTags, stickersSummary } from '../lib/stickers.js'
-import { existsSync } from 'node:fs'
+import { listPacks, previewPack, installPack, uninstallPack, packStatus, packsDir, backupRoot } from '../lib/packs.js'
+import { existsSync, readFileSync } from 'node:fs'
 
 const root = path.join(os.tmpdir(), `shared-memory-smoke-${Date.now()}`)
 const primary = path.join(root, 'A', 'MEMORY.md')
@@ -173,9 +174,11 @@ console.log('9) 提示词渲染：预算 / 边界打断 / 人设')
 console.log('10) 工具定义合法性')
 {
   const tools = buildMemoryTools({ store, hooks: { relocate: async () => ({}), reset: async () => ({}) } })
-  check('注册了 12 个工具', tools.length === 12, String(tools.length))
+  check('注册了 14 个工具（新增 memory_file_pack）', tools.length === 14, String(tools.length))
   const names = tools.map((t) => t.name)
   check('含检索工具', names.includes('memory_file_search'))
+  check('含自我记忆工具', names.includes('memory_file_identity'))
+  check('含记忆包工具', names.includes('memory_file_pack'))
   check('工具名无重复', new Set(names).size === names.length)
   check(
     '每个工具都有 name/description/parameters/execute/output.render',
@@ -257,6 +260,25 @@ console.log('13) 记忆网页')
   check('页面含保存位置控件', html.includes('id="pp"') && html.includes('id="mp"'))
   check('页面含质疑度接口', html.includes('/dsh-shared-memory/api/skepticism'))
   check('页面含路径迁移接口', html.includes('/dsh-shared-memory/api/paths'))
+  check('页面含记忆包区块', html.includes('📦 记忆包') && html.includes('id="packList"'))
+  check('页面含记忆包接口', html.includes('/api/packs'))
+  check('页面里的 JS 没有被换行符炸开', !html.includes("join('\n')") && !html.includes("join(真换行)"))
+
+  /* 最硬的一条：把页面内联 JS 抓出来编译一次。
+   * 模板字符串里的 \n 会被渲染成真换行，导致浏览器整页白屏——只有真编译才查得出来。 */
+  const scriptMatch = /<script>([\s\S]*?)<\/script>/.exec(html)
+  let inlineOk = false
+  let inlineErr = ''
+  if (scriptMatch) {
+    try {
+      // eslint-disable-next-line no-new-func
+      new Function(scriptMatch[1])
+      inlineOk = true
+    } catch (error) {
+      inlineErr = String(error?.message ?? error)
+    }
+  }
+  check('页面内联 JS 可以编译（模板字符串转义正确）', inlineOk, inlineErr || '没找到 <script>')
 }
 
 console.log('14) 提示词按作用域裁剪')
@@ -792,6 +814,79 @@ console.log('29) 表情包（用户导入 + 自动分类 + 按情绪挑选）')
   })
   check('表情包信息进提示词', promptText.includes('表情包') && promptText.includes('match'))
   delete process.env.DSH_STICKERS_DIR
+}
+
+await fsp.rm(root, { recursive: true, force: true })
+
+console.log('30) 记忆包（Memory Packs：默认不安装 / 安装前备份 / 只动两个分区）')
+{
+  const root2 = path.join(os.tmpdir(), `shared-memory-packs-${Date.now()}`)
+  const packPrimary = path.join(root2, 'A', 'MEMORY.md')
+  const packMirror = path.join(root2, 'B', 'MEMORY.md')
+  const packStore = new MemoryStore({ primaryPath: packPrimary, mirrorPath: packMirror, logger })
+  await fsp.mkdir(path.dirname(packPrimary), { recursive: true })
+  await fsp.mkdir(path.dirname(packMirror), { recursive: true })
+  await packStore.init()
+
+  const packs = listPacks()
+  check('packs/ 里能扫到记忆包', packs.length >= 1, String(packs.length))
+  const ely = packs.find((p) => p.id === 'elysia')
+  check('elysia 包元信息可读', Boolean(ely) && ely.version === '1.0.0')
+  check('elysia 带 identity + persona', ely?.sections.identity.exists === true && ely?.sections.persona.exists === true)
+  check('identity 是大文档（>50k 字）', ely?.sections.identity.chars > 50_000, String(ely?.sections.identity.chars))
+
+  /* 默认状态：什么都没装 */
+  const before = await packStatus(packStore)
+  const identityBefore = parseSections(packStore.raw).identity
+  check('默认不安装', before.packs.find((p) => p.id === 'elysia')?.installed === false)
+  check('默认 identity 是占位文案', before.packs.find((p) => p.id === 'elysia')?.sections.identity.isDefault === true)
+
+  /* preview */
+  const pv = await previewPack('elysia')
+  check('preview 给前 2000 字', pv.preview.identity.head.length === 2000)
+  check('preview 给章节列表', pv.preview.identity.chapters.length === 9, String(pv.preview.identity.chapters.length))
+
+  /* 不带 confirm 不写文件 */
+  const plan = await installPack(packStore, 'elysia', {})
+  check('不带 confirm 只返回计划', plan.needsConfirm === true)
+  check('不带 confirm 时 identity 未变', parseSections(packStore.raw).identity === identityBefore)
+  check('不带 confirm 时没有备份目录', !existsSync(backupRoot(packStore)))
+
+  /* 带 confirm 才写 */
+  const packIdentityText = readFileSync(path.join(packsDir(), 'elysia', 'identity.md'), 'utf8').replace(/\r\n?/g, '\n').trim()
+  const packPersonaText = readFileSync(path.join(packsDir(), 'elysia', 'persona.md'), 'utf8').replace(/\r\n?/g, '\n').trim()
+  const othersBefore = {}
+  for (const s of SECTIONS) {
+    if (s === 'identity' || s === 'persona') continue
+    othersBefore[s] = parseSections(packStore.raw)[s]
+  }
+  const applied = await installPack(packStore, 'elysia', { confirm: true })
+  check('带 confirm 安装成功', applied.ok === true, applied.error)
+  check('写了 identity + persona', applied.written.includes('identity') && applied.written.includes('persona'))
+  check('identity 字数与包一致', parseSections(packStore.raw).identity.trim().length === packIdentityText.length)
+  check('persona 字数与包一致', parseSections(packStore.raw).persona.trim().length === packPersonaText.length)
+  check('备份目录真的生成了', Boolean(applied.backupDir) && existsSync(applied.backupDir), applied.backupDir)
+  check('备份里有 identity.md', existsSync(path.join(applied.backupDir, 'identity.md')))
+  check('备份里有 meta.json', existsSync(path.join(applied.backupDir, 'meta.json')))
+  check(
+    '其它 8 个分区一字未改',
+    SECTIONS.filter((s) => s !== 'identity' && s !== 'persona').every((s) => parseSections(packStore.raw)[s] === othersBefore[s])
+  )
+
+  const afterInstall = await packStatus(packStore)
+  const st = afterInstall.packs.find((p) => p.id === 'elysia')
+  check('status 显示已安装', st?.installed === true)
+  check('status 按 hash 认出完全一致', st?.sections.identity.installed === true && st?.sections.persona.installed === true)
+  check('status 记下了安装时间', Boolean(st?.record?.installedAt))
+
+  /* 卸载 → 从备份恢复默认占位 */
+  const off = await uninstallPack(packStore, 'elysia')
+  check('卸载成功', off.ok === true)
+  check('卸载后 identity 回到默认占位', parseSections(packStore.raw).identity.trim() === DEFAULT_IDENTITY.join('\n'))
+  check('卸载后 persona 回到默认人设', parseSections(packStore.raw).persona.trim() === DEFAULT_PERSONA)
+  check('卸载后状态记录被清掉', !(await packStatus(packStore)).records.elysia)
+
+  await fsp.rm(root2, { recursive: true, force: true })
 }
 
 await fsp.rm(root, { recursive: true, force: true })

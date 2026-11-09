@@ -27,6 +27,10 @@
 **💬 汇报会像微信消息** —— 每件事做完，对话框末尾会弹出一个带她头像的小气泡，
 里面是她说的话，点一下还能听。就像她真的在跟你发消息。
 
+> 气泡**不需要语音引擎**。换一台没装 GPT-SoVITS 的电脑，她照样会发这条消息，
+> 只是不出声——气泡里会写一行「只显示文字 · 这台机器没有语音引擎」。
+> 想连气泡都关掉，配置里写 `voice.bubble: false`。
+
 **🎀 开心了会发表情** —— 你可以把自己的表情包丢进去，她会按情绪分好类，
 在合适的时机自己发一张。生气、害羞、得意……她都有。
 
@@ -514,6 +518,8 @@ node test/multiprocess.mjs 4 5               # 4 个"会话"各写 5 条，并�
 node test/multiprocess.mjs 8 10              # 压力版：80 条
 node test/multiprocess-dedupe.mjs 4 5        # 多进程写同一句：只留 1 条 + 强调计数
 node test/client-smoke.mjs                   # 客户端 bundle 契约与组件渲染
+node test/voice-smoke.mjs                    # 语音链路单元（清洗、音译、调校自检）
+node test/bubble-smoke.mjs                   # 气泡：没装引擎也要弹、bubble=false 要消失
 
 # 真实记忆上的可逆验证（会写真实 MEMORY.md，默认跳过，必须显式开）
 $env:DSH_ALLOW_REAL_MEMORY_TEST=1; node test/real-overwrite-reversibility.mjs

@@ -2,9 +2,11 @@ node_modules/
 *.log
 .DS_Store
 Thumbs.db
-# 插件运行期产物（不应进仓库）
+# 鎻掍欢杩愯鏈熶骇鐗╋紙涓嶅簲杩涗粨搴擄級
 *.lock
 MEMORY.md
 MEMORY.archive.md
 MEMORY.index.json
 .history/
+# 发版产物（脚本 rebuild 的 tgz 与 staging，不进仓库）
+.release/

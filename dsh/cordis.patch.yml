@@ -32,6 +32,10 @@
         # 也可以用 memory_file_voice({action:"enable"}) 在对话里开。
         voice:
           enabled: false
+          # 气泡（头像 + 文字 + 表情包那一条「微信消息」）——**和引擎无关**，默认开。
+          # 换一台没装引擎的电脑，她照样发消息，只是不出声。
+          # 想连气泡都安静下来，改成 false。
+          bubble: true
           engineUrl: 'http://127.0.0.1:9880'
           # 下面两条留空则用 elysia_say.py 的默认值；换机器后按实际路径填
           # pythonPath: 'C:\path\to\python.exe'
