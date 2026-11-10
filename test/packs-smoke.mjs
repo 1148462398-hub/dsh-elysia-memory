@@ -211,6 +211,19 @@ console.log('10) 只写两个分区（结构层面保证）')
   check('PACK_SECTIONS 不含 methodbook', !PACK_SECTIONS.includes('methodbook'))
 }
 
+console.log('11) 反复装包：备份目录不该越堆越多')
+{
+  const backupDir = path.join(path.dirname(store.primaryPath), '.packs-backup')
+  // 连续装 4 次，每次都留一份备份
+  for (let i = 0; i < 4; i++) await installPack(store, 'elysia', { confirm: true })
+  const entries = await fsp.readdir(backupDir).catch(() => [])
+  const mine = entries.filter((n) => n.startsWith('elysia-'))
+  check('备份目录存在', entries.length > 0, String(entries.length))
+  check('同组备份不超过 3 份', mine.length <= 3, `${mine.length} 份`)
+  const u = await uninstallPack(store, 'elysia')
+  check('清理备份后卸载仍然成功', u.ok === true, JSON.stringify(u).slice(0, 120))
+}
+
 await fsp.rm(root, { recursive: true, force: true })
 
 console.log('')

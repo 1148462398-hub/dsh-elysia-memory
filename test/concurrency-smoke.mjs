@@ -150,6 +150,25 @@ console.log('6) 索引孤儿回收：删掉的条目不该继续占索引')
   check('索引条数变少', after < before, `${before} -> ${after}`)
 }
 
+console.log('7) 项目作用域：中文目录不能再塌成同一个键，老条目还要认')
+{
+  const { projectScope, scopeVisible } = await import('../lib/store.js')
+  const dirs = [
+    'C:\\项目A\\记忆插件',
+    'D:\\项目B\\记忆插件',
+    'C:\\work\\记忆',
+    'C:\\Users\\x\\default-workspace'
+  ]
+  const keys = dirs.map((d) => projectScope(d))
+  check('四个目录四个不同的键', new Set(keys).size === dirs.length, keys.join(' | '))
+  check('纯中文目录退化成 dir-xxx', /^project:dir-[0-9a-f]{6}$/.test(keys[0]), keys[0])
+  check('ASCII 目录保留可读名', keys[3].startsWith('project:default-workspace-'), keys[3])
+  check('老格式条目仍然可见', scopeVisible('project:default-workspace', keys[3]) === true)
+  check('别的作用域不可见', scopeVisible('project:other-abcdef', keys[3]) === false)
+  check('global 永远可见', scopeVisible('global', keys[0]) === true)
+  check('同一个目录稳定', projectScope(dirs[0]) === keys[0])
+}
+
 await fsp.rm(root, { recursive: true, force: true }).catch(() => {})
 
 console.log('')
