@@ -112,7 +112,7 @@ async function main() {
   console.log(`发版：${pkg.name} ${tag}`)
 
   if (!SKIP_TESTS) {
-    for (const t of ['smoke', 'packs-smoke', 'client-smoke', 'voice-smoke', 'bubble-smoke', 'voiceinstall-smoke', 'relocate-smoke', 'housekeeping-smoke', 'concurrency-smoke', 'device-smoke']) {
+    for (const t of ['smoke', 'packs-smoke', 'client-smoke', 'voice-smoke', 'bubble-smoke', 'voiceinstall-smoke', 'relocate-smoke', 'housekeeping-smoke', 'concurrency-smoke', 'device-smoke', 'engine-fail-smoke']) {
       console.log(`\n=== test/${t}.mjs ===`)
       await run(node, [path.join('test', `${t}.mjs`)])
     }

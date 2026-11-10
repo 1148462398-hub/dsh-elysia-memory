@@ -115,6 +115,32 @@ console.log('4b) 按总字节封顶：条数没超但体积超了也要删')
   check('留下的是最新的', left.includes('big_5.wav') && left.includes('big_4.wav'), left.join(','))
 }
 
+console.log('4c) 非均匀大小：不能「删大的留小的」')
+{
+  const dir = path.join(root, 'audio-mixed')
+  await fsp.mkdir(dir, { recursive: true })
+  const now = Date.now()
+  // 新 → 旧：1.5MB / 1.0MB / 0.3MB，预算 2MB
+  const spec = [
+    ['new_big.wav', 1.5],
+    ['mid.wav', 1.0],
+    ['old_small.wav', 0.3]
+  ]
+  for (let i = 0; i < spec.length; i++) {
+    const [name, mb] = spec[i]
+    const f = path.join(dir, name)
+    await fsp.writeFile(f, Buffer.alloc(Math.round(mb * 1024 * 1024), 120))
+    const t2 = new Date(now - i * 60_000)
+    await fsp.utimes(f, t2, t2)
+  }
+  const r = await pruneAudioDir(dir, { keepDays: 0, maxFiles: 100, maxBytes: 2 * 1024 * 1024, now })
+  const left = await fsp.readdir(dir)
+  check('最大的新的留下', left.includes('new_big.wav'), left.join(','))
+  check('放不下的那个被删', !left.includes('mid.wav'), left.join(','))
+  check('更旧的小文件也不会被塞回来', !left.includes('old_small.wav'), left.join(','))
+  check('共删 2 个', r.removed === 2, 'removed=' + r.removed)
+}
+
 console.log('5) dryRun 只试算不真删')
 {
   const dir = path.join(root, 'audio-c')
