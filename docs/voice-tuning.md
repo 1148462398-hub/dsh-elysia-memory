@@ -146,3 +146,7 @@ custom:
 GPT-SoVITS 的算子没有按 DirectML 或 ZLUDA 写过，装上去大概率报各种算子缺失。
 RVC 反而是官方支持 DirectML 的（`A卡/I卡使用 CPU 依赖方案；Windows 可使用 DirectML`），
 但 RVC 是「变声」不是「合成」，需要另外训练模型——两条路别混。
+### 缓存上限
+
+`voice.audioKeepDays`（默认 7 天）、`voice.audioMaxFiles`（默认 400 个）、`voice.audioMaxBytes`（默认 300 MB）三条取并集。
+只按条数限不住磁盘——实测 400 个 wav 就占了 371 MB。

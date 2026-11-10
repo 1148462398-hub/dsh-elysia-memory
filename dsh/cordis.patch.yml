@@ -55,5 +55,7 @@
           # 启动后 20 秒跑一次，之后每 6 小时一次；0 / -1 表示关掉对应规则。
           audioKeepDays: 7
           audioMaxFiles: 400
+          # 总字节上限（默认 300 MB）。只按条数限不住磁盘：400 个文件实测 371 MB。
+          audioMaxBytes: 314572800
           maxChars: 1200
           cooldownMs: 800

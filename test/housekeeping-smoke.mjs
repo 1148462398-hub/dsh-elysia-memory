@@ -97,6 +97,24 @@ console.log('4) 音频清理：按天数过期，且当前正在用的那条永�
   check('非 wav 文件一概不碰', existsSync(path.join(dir, 'notes.txt')))
 }
 
+console.log('4b) 按总字节封顶：条数没超但体积超了也要删')
+{
+  const dir = path.join(root, 'audio-bytes')
+  await fsp.mkdir(dir, { recursive: true })
+  const now = Date.now()
+  for (let i = 0; i < 6; i++) {
+    const f = path.join(dir, `big_${i}.wav`)
+    await fsp.writeFile(f, 'x'.repeat(1024 * 1024)) // 每个 1 MB
+    const t2 = new Date(now - (6 - i) * 60_000)
+    await fsp.utimes(f, t2, t2)
+  }
+  const r = await pruneAudioDir(dir, { keepDays: 0, maxFiles: 100, maxBytes: 2_500_000, now })
+  check('条数没超（100）也删了', r.removed === 4, 'removed=' + r.removed)
+  const left = (await fsp.readdir(dir)).filter((n) => n.endsWith('.wav'))
+  check('剩下的不超过预算', left.length === 2, 'left=' + left.length)
+  check('留下的是最新的', left.includes('big_5.wav') && left.includes('big_4.wav'), left.join(','))
+}
+
 console.log('5) dryRun 只试算不真删')
 {
   const dir = path.join(root, 'audio-c')
