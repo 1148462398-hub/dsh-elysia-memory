@@ -47,5 +47,10 @@
           # 系统默认设备被切到别的声卡 / 虚拟设备时，靠这个能救回来一点。
           volume: 0
           minChars: 4
+          # 合成音频缓存自动清理：保留最近 N 天 / 最多 N 个 wav。
+          # 引擎自己不清，一个 wav 几百 KB，长年累月能吃掉好几个 GB。
+          # 启动后 20 秒跑一次，之后每 6 小时一次；0 / -1 表示关掉对应规则。
+          audioKeepDays: 7
+          audioMaxFiles: 400
           maxChars: 1200
           cooldownMs: 800
