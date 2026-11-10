@@ -200,6 +200,30 @@ console.log('5) assistant/message 在 enabled=false 时仍然进缓冲（气泡�
   check('turn/end 之后接口仍然可用', latest.status === 200)
 }
 
+console.log('6) state.json 里的语音路径要能「读回来」（以前只写不读，重启语音就废）')
+{
+  /*
+   * 一键安装会把 voiceEngineDir / voiceScriptPath 写进 state.json，
+   * 但启动时曾经没人读回来 —— 而 cordis.patch.yml 默认把这几项注释掉，
+   * 于是「装好 → 重启 → scriptPath 为空 → 合成永远失败」。
+   * 这里预置一份 state.json，再看 /api/voice/tuning 的 scriptDir 是不是它。
+   */
+  const fakeDir = path.join(root, 'voice-keep')
+  await fsp.mkdir(fakeDir, { recursive: true })
+  const fakeScript = path.join(fakeDir, 'elysia_say.py')
+  await fsp.writeFile(fakeScript, 'print(1)\n', 'utf8')
+  const stateDir = path.join(root, 'dsh-shared-memory')
+  await fsp.mkdir(stateDir, { recursive: true })
+  await fsp.writeFile(
+    path.join(stateDir, 'state.json'),
+    JSON.stringify({ voiceEngineDir: path.join(root, 'fake-engine'), voiceScriptPath: fakeScript, voiceRef: 'R04' }),
+    'utf8'
+  )
+  const host = await mount({ voice: { enabled: false } })
+  const tun = await callRoute(host.server.handler, MEMORY_PAGE_PREFIX + '/api/voice/tuning')
+  check('/api/voice/tuning 返回 200', tun.status === 200, `status=${tun.status}`)
+  check('scriptDir 就是 state.json 里记的那个目录', tun.body?.scriptDir === fakeDir, JSON.stringify(tun.body?.scriptDir))
+}
 await fsp.rm(root, { recursive: true, force: true }).catch(() => {})
 
 console.log('')

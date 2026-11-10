@@ -128,6 +128,23 @@ console.log('6) 卸载：只删插件放的 9 个文件，引擎本体一根汗�
   check('9 个文件真没了', [...WEIGHTS.map(([p]) => p), ...SCRIPTS, REF].every((p) => !existsSync(p)))
 }
 
+console.log('6.5) 半截权重也要能卸掉（按「文件在不在」删，不按体积）')
+{
+  // 重新铺一份，然后把一个大权重截成 1 KB（模拟下载中断留下的残骸）
+  for (const [p, size] of WEIGHTS) await fakeFile(p, size)
+  for (const s of SCRIPTS) await fsp.writeFile(s, 'x'.repeat(path.basename(s) === 'elysia_say.py' ? 12 * 1024 : 2048))
+  await fsp.mkdir(path.dirname(REF), { recursive: true })
+  await fsp.writeFile(REF, 'x'.repeat(300 * 1024))
+  const half = WEIGHTS[0][0]
+  await fsp.rm(half, { force: true })
+  await fakeFile(half, 1024) // 远低于 60 MB
+  const d = installer.inspect()
+  check('残骸让状态变成 partial', d.installed === 'partial', d.installed)
+  const r = await installer.uninstall()
+  check('半截文件也被删了', !existsSync(half), 'still exists: ' + half)
+  check('一共删了 9 个', r.removed.length === 9, String(r.removed.length))
+  check('删完是 none', r.after === 'none', r.after)
+}
 console.log('7) 重复卸载：幂等，不报错')
 {
   const r = await installer.uninstall()
