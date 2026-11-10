@@ -37,6 +37,9 @@
           # 想连气泡都安静下来，改成 false。
           bubble: true
           engineUrl: 'http://127.0.0.1:9880'
+          # 推理设备：auto（有 N 卡就用，没有就 CPU）/ cuda / cpu。
+          # A 卡和纯 CPU 机器选 auto 或 cpu 即可（实测 CPU 约 1.15× 实时，能聊，就是慢）。
+          device: 'auto'
           # 下面两条留空则用 elysia_say.py 的默认值；换机器后按实际路径填
           # pythonPath: 'C:\path\to\python.exe'
           # scriptPath: 'C:\path\to\elysia_say.py'

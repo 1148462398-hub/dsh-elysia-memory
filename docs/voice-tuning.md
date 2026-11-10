@@ -108,3 +108,41 @@ GPT-SoVITS 引擎（127.0.0.1:9880）
   torch/CUDA 依赖是机器相关的（NVIDIA 显卡、驱动、CUDA 版本），跨机器根本不通用。
 - 插件只做「参数/脚本的清单 + 说明 + 校验」这层，把「该拷什么、该重配什么」固化下来，
   而不是把二进制资产打包进去。这是有意的边界。
+
+---
+
+## 没有 N 卡也能跑（CPU / A 卡）
+
+GPT-SoVITS 官方安装器在 **Windows 上只给 CUDA 和 CPU**（ROCm 只在 Linux 的 `install.sh` 里有）。
+所以「A 卡」在 Windows 上的现实答案就是 **CPU 模式**。
+
+### 一行切换
+
+设备只从 `GPT_SoVITS/configs/tts_infer.yaml` 读（`api_v2.py` 里的 `--device` 是注释掉的），
+改 `custom:` 段这两行即可：
+
+```yaml
+custom:
+  device: cpu      # 原来是 cuda
+  is_half: false   # 原来是 true
+```
+
+或者交给插件：`voice.device: 'auto'`（默认）会在第一次启动时探测 `torch.cuda.is_available()`，
+探测不到就自动用 CPU，并生成 `tts_infer.cpu.yaml` 用 `-c` 启动——**原配置不动**。
+也可以显式写 `cuda` / `cpu`，或在面板上点「切换设备」（写进 state.json，重启引擎后生效）。
+
+### 实测速度（Ryzen 7 9800X3D / 16 线程，v5turbo）
+
+| 设备 | 7.3 秒音频的合成耗时 | 实时率 |
+|---|---|---|
+| RTX 5070 Ti（CUDA） | 0.9 秒 | 0.14× |
+| 同 CPU | 8.4 秒 | **1.15×** |
+
+也就是说：**你说一句 7 秒的话，它 8 秒后能念出来**。对话可用，只是别指望实时。
+引擎首次加载权重在 CPU 上约 25 秒（GPU 约 20 秒），插件已把 CPU 模式的启动超时放宽到 240 秒。
+
+### 为什么不走 DirectML / ZLUDA
+
+GPT-SoVITS 的算子没有按 DirectML 或 ZLUDA 写过，装上去大概率报各种算子缺失。
+RVC 反而是官方支持 DirectML 的（`A卡/I卡使用 CPU 依赖方案；Windows 可使用 DirectML`），
+但 RVC 是「变声」不是「合成」，需要另外训练模型——两条路别混。
