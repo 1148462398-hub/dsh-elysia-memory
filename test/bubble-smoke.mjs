@@ -66,7 +66,7 @@ function makeHost() {
 }
 
 /** 假的 req/res，够 webui 的 sendJson 用 */
-function callRoute(handler, url, method = 'GET') {
+function callRoute(handler, url, method = 'GET', headers = {}) {
   return new Promise((resolve, reject) => {
     const chunks = []
     const res = {
@@ -86,7 +86,7 @@ function callRoute(handler, url, method = 'GET') {
       on() {},
       once() {}
     }
-    const req = { method, url, headers: {}, on() {}, once() {} }
+    const req = { method, url, headers, on() {}, once() {} }
     try {
       handler(req, res)
     } catch (e) {
@@ -223,6 +223,16 @@ console.log('6) state.json 里的语音路径要能「读回来」（以前只�
   const tun = await callRoute(host.server.handler, MEMORY_PAGE_PREFIX + '/api/voice/tuning')
   check('/api/voice/tuning 返回 200', tun.status === 200, `status=${tun.status}`)
   check('scriptDir 就是 state.json 里记的那个目录', tun.body?.scriptDir === fakeDir, JSON.stringify(tun.body?.scriptDir))
+}
+console.log('7) DNS rebinding：Host 不是回环名/IP 的一律拒（恶意域解析到 127.0.0.1 也读不到记忆）')
+{
+  const host = await mount({ voice: { enabled: false } })
+  const evil = await callRoute(host.server.handler, MEMORY_PAGE_PREFIX + '/', 'GET', { host: 'evil.example' })
+  check('伪造域名的 Host 被 403', evil.status === 403, `status=${evil.status}`)
+  const local = await callRoute(host.server.handler, MEMORY_PAGE_PREFIX + '/api/voice', 'GET', { host: '127.0.0.1:7692' })
+  check('回环 IP 正常放行', local.status === 200, `status=${local.status}`)
+  const localhost = await callRoute(host.server.handler, MEMORY_PAGE_PREFIX + '/api/voice', 'GET', { host: 'localhost:7692' })
+  check('localhost 也放行', localhost.status === 200, `status=${localhost.status}`)
 }
 await fsp.rm(root, { recursive: true, force: true }).catch(() => {})
 
