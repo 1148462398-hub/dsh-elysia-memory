@@ -59,3 +59,38 @@
           audioMaxBytes: 314572800
           maxChars: 1200
           cooldownMs: 800
+        # ═══ 主动助手（三组，全部默认关闭）═══════════════════════════
+        #
+        # 设计稿：docs/proactive-assistant.md
+        # 铁律：默认关 / 只读 / 观测数据不进 MEMORY.md。
+
+        # 1) 长期观测库（npm 的 node:sqlite，本地 SQLite，不需要装依赖）
+        # 存「发生过什么」，不进提示词；靠 memory_file_timeline 按时间窗查。
+        observations:
+          enabled: false
+          # 原始指标（cpu/mem/disk）保留多少小时；事件类默认保留 90 天
+          rawKeepHours: 48
+          eventKeepHours: 2160
+
+        # 2) 自我感知（只采廉价指标：os.cpus / os.freemem，全部 < 1ms）
+        # 触发的是「事件」，不是每 5 秒一条流水；有冷却，不刷屏。
+        senses:
+          enabled: false
+          intervalSec: 10
+          thresholds:
+            cpu: 90
+            cpuHoldSec: 120
+            mem: 92
+            diskFreeGB: 5
+            diskPath: 'C:'
+
+        # 3) B 站只读采集（绝不登录、绝不发帖）
+        # 只产出「待审草稿」，由用户在 memory_file_review 里过目，
+        # 最后一步发布永远是用户手动完成。
+        bilibili:
+          enabled: false
+          # 一次抓多少热门视频 / 每条视频看多少评论
+          popularLimit: 20
+          commentLimit: 20
+          # 每轮最多产多少条待审草稿
+          maxCandidates: 3
